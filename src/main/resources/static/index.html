@@ -67,8 +67,9 @@
                                     </th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                                         Наименование</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                        Монтажная Партия</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Склад
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">МП</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Кол-во
                                     </th>
                                 </tr>
@@ -77,9 +78,10 @@
                                 <tr v-for="item in searchResults" :key="item.id" class="hover:bg-gray-50">
                                     <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ item.markNumber }}</td>
                                     <td class="px-6 py-4 text-sm text-gray-700">{{ item.name }}</td>
+                                    <td class="px-6 py-4 text-sm text-gray-500">{{ item.storeName }}</td>
                                     <td class="px-6 py-4 text-sm text-gray-500">
-                                        {{ item.mpCode }}
-                                        <!-- Note: If we wanted to link to the MP, we'd need storeId in the DTO, currently SearchController just returns PackingList list -->
+                                        {{ item.mpName }}
+                                        <!--<span class="text-xs text-gray-400">({{ item.mpCode }})</span>-->
                                     </td>
                                     <td class="px-6 py-4 text-sm text-gray-900">{{ item.quantity }}</td>
                                 </tr>

@@ -98,5 +98,14 @@ public class PackingList {
         this.mp = mp;
     }
 
+    // Virtual getters for JSON serialization
+    public String getMpName() {
+        return mp != null ? mp.getName() : "";
+    }
+
+    public String getStoreName() {
+        return mp != null && mp.getStore() != null ? mp.getStore().getName() : "";
+    }
+
     // getters/setters
 }
