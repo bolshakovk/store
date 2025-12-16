@@ -134,9 +134,20 @@ const app = createApp({
 
         const searchQuery = ref('');
         const searchResults = ref([]);
+        const systemStatus = ref(null);
 
         // Actions
+        const fetchSystemStatus = async () => {
+            try {
+                const res = await fetch(`${API_URL}/system/status`);
+                systemStatus.value = await res.json();
+            } catch (e) {
+                console.error("Failed to fetch system status", e);
+            }
+        };
+
         const search = async () => {
+
             if (!searchQuery.value.trim()) return;
             try {
                 const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(searchQuery.value)}`);
@@ -150,6 +161,7 @@ const app = createApp({
         // Init
         onMounted(() => {
             fetchStores();
+            fetchSystemStatus();
         });
 
         return {
@@ -162,6 +174,8 @@ const app = createApp({
             searchQuery,
             searchResults,
             search,
+            // System
+            systemStatus,
             // Modals
             showCreateStoreModal,
             newStoreName,
