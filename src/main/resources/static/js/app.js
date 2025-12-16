@@ -132,6 +132,21 @@ const app = createApp({
             await openMp(selectedMp.value);
         };
 
+        const searchQuery = ref('');
+        const searchResults = ref([]);
+
+        // Actions
+        const search = async () => {
+            if (!searchQuery.value.trim()) return;
+            try {
+                const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(searchQuery.value)}`);
+                searchResults.value = await res.json();
+                currentView.value = 'search-results';
+            } catch (e) {
+                console.error(e);
+            }
+        };
+
         // Init
         onMounted(() => {
             fetchStores();
@@ -143,6 +158,10 @@ const app = createApp({
             mps,
             selectedStore,
             selectedMp,
+            // Search
+            searchQuery,
+            searchResults,
+            search,
             // Modals
             showCreateStoreModal,
             newStoreName,
