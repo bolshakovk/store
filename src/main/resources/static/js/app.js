@@ -3,6 +3,107 @@ const { createApp, ref, onMounted } = Vue;
 const app = createApp({
     setup() {
         const currentView = ref('stores');
+
+        // --- Auth State ---
+        const isAuthenticated = ref(false);
+        const isRegistering = ref(false);
+        const authForm = ref({ username: '', password: '' });
+        const authError = ref('');
+
+        const startApp = async () => {
+            // Check if we have tokens, simplified check
+            if (localStorage.getItem('accessToken')) {
+                isAuthenticated.value = true;
+                await fetchStores();
+                fetchSystemStatus();
+            }
+        };
+
+        const toggleAuthMode = () => {
+            isRegistering.value = !isRegistering.value;
+            authError.value = '';
+        };
+
+        const authSubmit = async () => {
+            authError.value = '';
+            const endpoint = isRegistering.value ? '/api/auth/register' : '/api/auth/login';
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(authForm.value)
+                });
+
+                if (isRegistering.value) {
+                    if (res.ok) {
+                        alert("Регистрация успешна! Теперь войдите.");
+                        isRegistering.value = false;
+                    } else {
+                        const msg = await res.text();
+                        authError.value = msg || "Ошибка регистрации";
+                    }
+                } else {
+                    if (res.ok) {
+                        const tokens = await res.json();
+                        localStorage.setItem('accessToken', tokens.accessToken);
+                        localStorage.setItem('refreshToken', tokens.refreshToken);
+                        isAuthenticated.value = true;
+                        authForm.value = { username: '', password: '' };
+                        fetchStores();
+                        fetchSystemStatus();
+                    } else {
+                        authError.value = "Неверные учетные данные";
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+                authError.value = "Ошибка сети";
+            }
+        };
+
+        const logout = () => {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            isAuthenticated.value = false;
+            stores.value = [];
+            currentView.value = 'stores';
+        };
+
+        // --- HTTP Client with Interceptor logic ---
+        const apiFetch = async (url, options = {}) => {
+            let token = localStorage.getItem('accessToken');
+            const headers = { ...options.headers };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(url, { ...options, headers });
+
+            if (response.status === 403 || response.status === 401) {
+                // Try refresh
+                const refreshRes = await fetch('/api/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refreshToken: localStorage.getItem('refreshToken') })
+                });
+
+                if (refreshRes.ok) {
+                    const data = await refreshRes.json();
+                    localStorage.setItem('accessToken', data.accessToken);
+                    // Retry original request
+                    headers['Authorization'] = `Bearer ${data.accessToken}`;
+                    return fetch(url, { ...options, headers });
+                } else {
+                    // Refresh failed
+                    logout();
+                    throw new Error("Session expired");
+                }
+            }
+            return response;
+        };
+
+
+        // --- App Data ---
         const stores = ref([]);
         const mps = ref([]);
         const selectedStore = ref(null);
@@ -16,24 +117,26 @@ const app = createApp({
         const fileInput = ref(null);
         const uploading = ref(false);
 
-        // API Base
+        // Search & System
+        const searchQuery = ref('');
+        const searchResults = ref([]);
+        const systemStatus = ref(null);
+
         const API_URL = '/api';
 
         // --- Store Actions ---
         const fetchStores = async () => {
+            if (!isAuthenticated.value) return;
             try {
-                const res = await fetch(`${API_URL}/stores`);
+                const res = await apiFetch(`${API_URL}/stores`);
                 stores.value = await res.json();
-            } catch (e) {
-                console.error("Error fetching stores:", e);
-                alert("Failed to fetch stores.");
-            }
+            } catch (e) { console.error(e); }
         };
 
         const createStore = async () => {
             if (!newStoreName.value.trim()) return;
             try {
-                const res = await fetch(`${API_URL}/stores`, {
+                const res = await apiFetch(`${API_URL}/stores`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: newStoreName.value })
@@ -43,14 +146,12 @@ const app = createApp({
                     showCreateStoreModal.value = false;
                     newStoreName.value = '';
                 }
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) { console.error(e); }
         };
 
         const deleteStore = async (id) => {
-            if (!confirm("Are you sure?")) return;
-            await fetch(`${API_URL}/stores/${id}`, { method: 'DELETE' });
+            if (!confirm("Вы уверены?")) return;
+            await apiFetch(`${API_URL}/stores/${id}`, { method: 'DELETE' });
             await fetchStores();
         };
 
@@ -62,14 +163,14 @@ const app = createApp({
 
         // --- MP Actions ---
         const fetchMps = async (storeId) => {
-            const res = await fetch(`${API_URL}/stores/${storeId}/mp`);
+            const res = await apiFetch(`${API_URL}/stores/${storeId}/mp`);
             mps.value = await res.json();
         };
 
         const createMp = async () => {
             if (!newMpName.value.trim()) return;
             try {
-                const res = await fetch(`${API_URL}/stores/${selectedStore.value.id}/mp`, {
+                const res = await apiFetch(`${API_URL}/stores/${selectedStore.value.id}/mp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: newMpName.value })
@@ -79,20 +180,17 @@ const app = createApp({
                     showCreateMpModal.value = false;
                     newMpName.value = '';
                 }
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) { console.error(e); }
         };
 
         const deleteMp = async (id) => {
-            if (!confirm("Are you sure?")) return;
-            await fetch(`${API_URL}/stores/${selectedStore.value.id}/mp/${id}`, { method: 'DELETE' });
+            if (!confirm("Вы уверены?")) return;
+            await apiFetch(`${API_URL}/stores/${selectedStore.value.id}/mp/${id}`, { method: 'DELETE' });
             await fetchMps(selectedStore.value.id);
         };
 
         const openMp = async (mp) => {
-            // Fetch fresh MP details including packing list
-            const res = await fetch(`${API_URL}/stores/${selectedStore.value.id}/mp/${mp.id}`);
+            const res = await apiFetch(`${API_URL}/stores/${selectedStore.value.id}/mp/${mp.id}`);
             selectedMp.value = await res.json();
             currentView.value = 'mp-details';
         };
@@ -105,67 +203,65 @@ const app = createApp({
             formData.append('file', fileInput.value.files[0]);
 
             try {
-                const res = await fetch(`${API_URL}/stores/${selectedStore.value.id}/mp/${selectedMp.value.id}/packing/upload`, {
+                const res = await apiFetch(`${API_URL}/stores/${selectedStore.value.id}/mp/${selectedMp.value.id}/packing/upload`, {
                     method: 'POST',
                     body: formData
                 });
                 if (res.ok) {
-                    // Refresh MP details
                     await openMp(selectedMp.value);
-                    fileInput.value.value = ''; // clear input
-                    alert("Upload successful!");
+                    fileInput.value.value = '';
+                    alert("Загрузка успешна!");
                 } else {
-                    alert("Upload failed.");
+                    alert("Ошибка загрузки.");
                 }
             } catch (e) {
                 console.error(e);
-                alert("Error submitting file.");
+                alert("Ошибка отправки файла.");
             } finally {
                 uploading.value = false;
             }
         };
 
         const deleteItem = async (itemId) => {
-            if (!confirm("Delete this item?")) return;
-            await fetch(`${API_URL}/stores/${selectedStore.value.id}/mp/${selectedMp.value.id}/packing/${itemId}`, { method: 'DELETE' });
-            // Refresh
+            if (!confirm("Удалить позицию?")) return;
+            await apiFetch(`${API_URL}/stores/${selectedStore.value.id}/mp/${selectedMp.value.id}/packing/${itemId}`, { method: 'DELETE' });
             await openMp(selectedMp.value);
         };
 
-        const searchQuery = ref('');
-        const searchResults = ref([]);
-        const systemStatus = ref(null);
 
         // Actions
         const fetchSystemStatus = async () => {
             try {
-                const res = await fetch(`${API_URL}/system/status`);
+                const res = await apiFetch(`${API_URL}/system/status`);
                 systemStatus.value = await res.json();
-            } catch (e) {
-                console.error("Failed to fetch system status", e);
-            }
+            } catch (e) { console.error("Failed to fetch system status", e); }
         };
 
         const search = async () => {
-
             if (!searchQuery.value.trim()) return;
             try {
-                const res = await fetch(`${API_URL}/search?q=${encodeURIComponent(searchQuery.value)}`);
+                const res = await apiFetch(`${API_URL}/search?q=${encodeURIComponent(searchQuery.value)}`);
                 searchResults.value = await res.json();
                 currentView.value = 'search-results';
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) { console.error(e); }
         };
 
         // Init
         onMounted(() => {
-            fetchStores();
-            fetchSystemStatus();
+            startApp();
         });
 
         return {
             currentView,
+            // Auth
+            isAuthenticated,
+            isRegistering,
+            authForm,
+            authError,
+            authSubmit,
+            toggleAuthMode,
+            logout,
+            // Data
             stores,
             mps,
             selectedStore,
