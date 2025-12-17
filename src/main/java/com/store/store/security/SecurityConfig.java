@@ -44,7 +44,8 @@ public class SecurityConfig {
                                 "/js/**",
                                 "/css/**",
                                 "/",
-                                "/favicon.ico")
+                                "/favicon.ico",
+                                "/health")
                         .permitAll()
                         .anyRequest().authenticated())
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
